@@ -1,11 +1,152 @@
 #include <stdio.h>>
+#include <string.h>
+#include <cmath>
 
-#include <GL/glew.h>
-#include <GLFW/glfw3.h>
+#include <GL\glew.h>
+#include <GLFW\glfw3.h>
+#include <glm\glm.hpp>
+#include <glm\gtc\matrix_transform.hpp>
+#include <glm\gtc\type_ptr.hpp>
+
+
 
 // define window dimensions
 const GLint WIDTH = 800, HEIGHT = 600;
+const float toRadians = 3.14159265f / 180.0f;
 
+GLuint VAO, VBO, shader, uniformModel;
+
+bool direction = true;
+float triOffset = 0.0f;
+float triMaxOffset = 0.7f;
+float triIncrement = 0.0005f;
+
+
+// vertex Shader (will take the vertices so we can manipulate the values and pass them to the fragment shader)
+// uniform variables are really nice for projection and model matricies and keeping things... uniform. 
+static const char* vShader = "												\n\
+#version 330																\n\
+																			\n\
+layout (location = 0) in vec3 pos;											\n\
+																			\n\
+uniform mat4 model;															\n\
+																			\n\
+void main()																	\n\
+{																			\n\
+	gl_Position = model * vec4(0.4 * pos.x, 0.4 * pos.y, pos.z, 1.0);				\n\
+}";																
+
+
+// fragment shader
+static const char* fShader = "												\n\
+#version 330																\n\
+																			\n\
+out vec4 colour;															\n\
+																			\n\
+void main()																	\n\
+{																			\n\
+	colour = vec4(0.0, 1.0, 0.0, 1.0);										\n\
+}";
+
+void CreateTriangle()
+{
+	//plot triangle points
+	GLfloat vertices[] = {
+		-1.0f, -1.0f, 0.0f,
+		1.0f, -1.0f, 0.0f,
+		0.0f, 1.0f, 0.0f
+	};
+
+	// Creating a vertex array in gpu and get reference to VAO we give it
+	glGenVertexArrays(1, &VAO);
+	glBindVertexArray(VAO); // no bind the vao to the array
+
+	//Create buffer object inside vao
+	glGenBuffers(1, &VBO);
+	glBindBuffer(GL_ARRAY_BUFFER, VBO);
+	//connect buffer data
+	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW); // static draw as we wont change values in array. GL dynamic lets you do that though
+
+
+	//
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
+	glEnableVertexAttribArray(0);
+
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	glBindVertexArray(0);
+
+}
+
+void AddShader(GLuint theProgram, const char* shaderCode, GLenum shaderType)
+{
+	//  Create an empty shader of that type 
+	GLuint theShader = glCreateShader(shaderType);
+
+	//pointer directy to code
+	const GLchar* theCode[1];
+	theCode[0] = shaderCode; // pass code
+
+	// length of code 
+	GLint codeLegth[1]; 
+	codeLegth[0] = strlen(shaderCode);
+
+	//shader in memory will now have its code modified
+	glShaderSource(theShader, 1, theCode, codeLegth);
+	glCompileShader(theShader);
+
+	GLint result = 0; 
+	GLchar eLog[1024] = { 0 }; 
+
+	glGetShaderiv(theShader, GL_COMPILE_STATUS, &result);
+	if (!result)
+	{
+		glGetShaderInfoLog(theShader, sizeof(eLog), NULL, eLog);
+		printf("Error compiling the %d shader: '%s'\n", shaderType, eLog); 
+		return;
+	}
+
+	//Attach Shader
+	glAttachShader(theProgram, theShader); 
+
+}
+void CompileShaders()
+{
+	shader = glCreateProgram();
+
+	if (!shader) {
+		printf("Error creating shader program!\n");
+		return; // will return straight to main though there is nothing really else there 
+	}
+
+	AddShader(shader, vShader, GL_VERTEX_SHADER);
+	AddShader(shader, fShader, GL_FRAGMENT_SHADER);
+
+	GLint result = 0; // result of g functions we will perform
+	GLchar eLog[1024] = { 0 }; // place to log the errors.  Inellisense doesn't pick up on the shader codeso we have to write good code. 
+	// detailed error logs is ESSENTIAL
+
+	//Create executables on GPU
+	glLinkProgram(shader);
+	// Validate proper linkage 
+	glGetProgramiv(shader, GL_LINK_STATUS, &result);
+	if (!result)
+	{
+		glGetProgramInfoLog(shader, sizeof(eLog), NULL, eLog);
+		printf("Error linking program: '%s'\n", eLog); //print out log where error is, with help of some formatting 
+		return;
+	}
+
+	glValidateProgram(shader);
+	glGetProgramiv(shader, GL_VALIDATE_STATUS, &result);
+	if (!result)
+	{
+		glGetProgramInfoLog(shader, sizeof(eLog), NULL, eLog);
+		printf("Error vaidating program: '%s'\n", eLog); //print out log where error is, with help of some formatting 
+		return;
+	}
+	// Grab location of the uniform variable by grabbing its ID manually
+	uniformModel = glGetUniformLocation(shader, "model");
+}
 
 int main()
 {
@@ -27,7 +168,7 @@ int main()
 	// Allow forward compatiblity 
 	glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 
-	GLFWwindow* mainWindow = glfwCreateWindow(WIDTH, HEIGHT, "Test Window", NULL, NULL);
+	GLFWwindow *mainWindow = glfwCreateWindow(WIDTH, HEIGHT, "Test Window", NULL, NULL);
 	if (!mainWindow) // if we weren't able to create the window for some reason
 	{
 		printf("GLFW window creation failed!");
@@ -58,6 +199,9 @@ int main()
 	// Setup Viewport size
 	glViewport(0, 0, bufferWidth, bufferHeight);
 
+	CreateTriangle();
+	CompileShaders();
+
 	// Loop until window closed
 	while (!glfwWindowShouldClose(mainWindow))
 	{
@@ -65,9 +209,50 @@ int main()
 		// check for any events like mouse clicks, window resizing etc
 		glfwPollEvents();
 
+		// everytime we go through the loop check direction
+		if (direction)
+		{
+			// increase tri offset by increment value, if moving to right += if left -=
+			triOffset += triIncrement;
+		}
+		else {
+			triOffset -= triIncrement;
+		}
+		if (abs(triOffset) >= triMaxOffset) {
+			direction = !direction;
+		}
+
 		// clear window
-		glClearColor(1.0f, 0.0f, 0.0f, 1.0f);
+		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT); // each pixel has more data than just color like depth, here we are spcifying we want to clear all colors.
+
+
+		//Grab id and when we call use program it woudl use the one with id of shader
+		// if we had multipel shaders it would draw them all and use the one we want but this program
+		// currently only uses one shader
+		glUseProgram(shader);
+
+		// matrix with all values as 0 except bottom// essentially no calculations performed on it
+		glm::mat4 model(1.0f);
+		// output value of translate will be applied to model instead of doing changes directly on the model. 
+		// be aware of order of transformationsg
+		model = glm::rotate(model, 45 * toRadians, glm::vec3(0.0f, 0.0f, 1.0f));
+		model = glm::translate(model, glm::vec3(triOffset, triOffset, 0.0f));
+		
+
+		//Assign value to shader itself
+		// 1 = 1 value f = float
+		// when shader is attached set uniform value to triOffset, which will change value of our uniform value. 
+		glUniform1f(uniformModel, triOffset);
+
+		// we need value pointer as model isn't directly in a format we can use. 
+		glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(model));
+
+		glBindVertexArray(VAO);
+
+		glDrawArrays(GL_TRIANGLES, 0, 3);
+		glBindVertexArray(0);
+		glUseProgram(0);
 
 		glfwSwapBuffers(mainWindow);
 
