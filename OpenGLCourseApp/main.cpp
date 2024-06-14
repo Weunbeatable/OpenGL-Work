@@ -14,7 +14,7 @@
 const GLint WIDTH = 800, HEIGHT = 600;
 const float toRadians = 3.14159265f / 180.0f;
 
-GLuint VAO, VBO, shader, uniformModel;
+GLuint VAO, VBO, IBO, shader, uniformModel;
 
 bool direction = true;
 float triOffset = 0.0f;
@@ -62,9 +62,17 @@ void main()																	\n\
 
 void CreateTriangle()
 {
+	unsigned int indicies[] = {
+		0, 3, 1,
+		1, 3, 2,
+		2, 3, 0, 
+		0, 1, 2
+	};
+
 	//plot triangle points
 	GLfloat vertices[] = {
 		-1.0f, -1.0f, 0.0f,
+		0.0f, -1.0f, 1.0f, // extra point for indexing 
 		1.0f, -1.0f, 0.0f,
 		0.0f, 1.0f, 0.0f
 	};
@@ -72,6 +80,11 @@ void CreateTriangle()
 	// Creating a vertex array in gpu and get reference to VAO we give it
 	glGenVertexArrays(1, &VAO);
 	glBindVertexArray(VAO); // no bind the vao to the array
+
+	glGenBuffers(1, &IBO);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, IBO ); // element buffer stores indicies
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indicies), indicies,  GL_STATIC_DRAW); // bind index buffer object. 
+
 
 	//Create buffer object inside vao
 	glGenBuffers(1, &VBO);
@@ -85,6 +98,7 @@ void CreateTriangle()
 	glEnableVertexAttribArray(0);
 
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 	glBindVertexArray(0);
 
 }
@@ -207,6 +221,8 @@ int main()
 		glfwTerminate();
 		return 1;
 	}
+	
+	glEnable(GL_DEPTH_TEST); // lets us find out which triangles are "deeper than others for depth testing);
 
 	// Setup Viewport size
 	glViewport(0, 0, bufferWidth, bufferHeight);
@@ -254,8 +270,8 @@ int main()
 
 		// clear window
 		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-		glClear(GL_COLOR_BUFFER_BIT); // each pixel has more data than just color like depth, here we are spcifying we want to clear all colors.
-
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT ); // each pixel has more data than just color like depth, here we are spcifying we want to clear all colors.
+		// clear color buffer and depth buffer bits
 		
 
 		//Grab id and when we call use program it woudl use the one with id of shader
@@ -269,7 +285,7 @@ int main()
 		// be aware of order of transformationsg
 		
 		//model = glm::translate(model, glm::vec3(triOffset, 0.0f, 0.0f));
-		//model = glm::rotate(model, curAngle * toRadians, glm::vec3(0.0f, 0.0f, 1.0f));
+		model = glm::rotate(model, curAngle * toRadians, glm::vec3(0.0f, 1.0f, 0.0f));
 		
 		//Scaling, note scaling happens relative to origin so we would get different results depending on if we scale before 
 		// or after rotating, translating etc. 
@@ -284,6 +300,9 @@ int main()
 		glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(model));
 
 		glBindVertexArray(VAO);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, IBO);
+		glDrawElements(GL_TRIANGLES, 12, GL_UNSIGNED_INT, 0);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);// unbinding IBO
 
 		glDrawArrays(GL_TRIANGLES, 0, 3);
 		glBindVertexArray(0);
