@@ -21,6 +21,13 @@ float triOffset = 0.0f;
 float triMaxOffset = 0.7f;
 float triIncrement = 0.0005f;
 
+float curAngle = 0.0f;
+
+bool sizeDirection = true;
+float curSize = 0.4f;
+float maxSize = 0.8f;
+float minSize = 0.1f;
+
 
 // vertex Shader (will take the vertices so we can manipulate the values and pass them to the fragment shader)
 // uniform variables are really nice for projection and model matricies and keeping things... uniform. 
@@ -29,11 +36,14 @@ static const char* vShader = "												\n\
 																			\n\
 layout (location = 0) in vec3 pos;											\n\
 																			\n\
+out vec4 vCol;																\n\
+																			\n\
 uniform mat4 model;															\n\
 																			\n\
 void main()																	\n\
 {																			\n\
-	gl_Position = model * vec4(0.4 * pos.x, 0.4 * pos.y, pos.z, 1.0);				\n\
+	gl_Position = model * vec4(pos, 1.0);									\n\
+	vCol = vec4(clamp(pos, 0.0f, 1.0f), 1.0f);								\n\
 }";																
 
 
@@ -41,11 +51,13 @@ void main()																	\n\
 static const char* fShader = "												\n\
 #version 330																\n\
 																			\n\
+in vec4 vCol;																			\n\
+																			\n\
 out vec4 colour;															\n\
 																			\n\
 void main()																	\n\
 {																			\n\
-	colour = vec4(0.0, 1.0, 0.0, 1.0);										\n\
+	colour = vCol;										\n\
 }";
 
 void CreateTriangle()
@@ -221,11 +233,30 @@ int main()
 		if (abs(triOffset) >= triMaxOffset) {
 			direction = !direction;
 		}
+		curAngle += 0.01f;
+		if (curAngle >= 360)
+		{
+			// this is just to prevent possible overflow. 
+			curAngle -= 360;
+		}
+
+		if (sizeDirection)
+		{
+			curSize += 0.0001f;
+		}
+		else {
+			curSize -= 0.0001f;
+		}
+
+		if (curSize >= maxSize || curSize <= minSize) {
+			sizeDirection = !sizeDirection;
+		}
 
 		// clear window
 		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT); // each pixel has more data than just color like depth, here we are spcifying we want to clear all colors.
 
+		
 
 		//Grab id and when we call use program it woudl use the one with id of shader
 		// if we had multipel shaders it would draw them all and use the one we want but this program
@@ -236,9 +267,13 @@ int main()
 		glm::mat4 model(1.0f);
 		// output value of translate will be applied to model instead of doing changes directly on the model. 
 		// be aware of order of transformationsg
-		model = glm::rotate(model, 45 * toRadians, glm::vec3(0.0f, 0.0f, 1.0f));
-		model = glm::translate(model, glm::vec3(triOffset, triOffset, 0.0f));
 		
+		//model = glm::translate(model, glm::vec3(triOffset, 0.0f, 0.0f));
+		//model = glm::rotate(model, curAngle * toRadians, glm::vec3(0.0f, 0.0f, 1.0f));
+		
+		//Scaling, note scaling happens relative to origin so we would get different results depending on if we scale before 
+		// or after rotating, translating etc. 
+		model = glm::scale(model, glm::vec3(0.4f, 0.4f, 1.0f));
 
 		//Assign value to shader itself
 		// 1 = 1 value f = float
